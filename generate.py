@@ -1,11 +1,12 @@
 import json
 import random
 import uuid
+from copy import copy
 
 import requests
 import time
 
-r = requests.get('https://randomuser.me/api/', data = { 'dataType': 'json' })
+#r = requests.get('https://randomuser.me/api/', data = { 'dataType': 'json' })
 
 CR_VIEW_BASKET = 0.2
 CR_BASKET_PURCHASE = 0.33
@@ -43,6 +44,7 @@ class Generator(object):
     def __init__(self, user_count):
         self.users_count = user_count
         self.users = []
+        self.now = time.time()
 
         return
 
@@ -50,53 +52,114 @@ class Generator(object):
         print(self.users)
         for user in self.users:
             print(user['events'])
-
-    def _save(self, data, file):
-        with open(file, mode="w+", encoding="utf-8") as f:
-            f.write(" ".join(data[0].keys()))
-            for item1 in data:
-                item = item1
-                item.pop('cart', None)
-                item.pop('events', None)
-
-                out = ' '.join(map(str, item.values()))
-                f.write(out+"\n")
+    #
+    # def _save(self, data, file):
+    #     with open(file, mode="w+", encoding="utf-8") as f:
+    #         f.write(" ".join(data[0].keys()))
+    #         for item1 in data:
+    #             item = item1
+    #             item.pop('cart', None)
+    #             item.pop('events', None)
+    #
+    #             out = ' '.join(map(str, item.values()))
+    #             f.write(out+"\n")
 
     def save(self):
-        users = self.users
-        self._save(users, 'customers.csv')
+        self._save_customers(self.users, 'customers.csv')
+        self._save_events()
+        return
+
+    def track(self):
+        self._track_users()
+        self._track_events()
+        return
+
+    def _track_users(self):
+        commands = []
+        for i, user in enumerate(self.users):
+            cmd = {
+                'name': 'crm/customers',
+                'data': {
+                    'customer_ids': {
+                        'registered': user['registered_id']
+                    },
+                    'project_id': 'e1d184f2-843b-11e6-b121-141877340e97'
+                }
+            }
+            cmd['data'].update({k: v for k, v in user.items() if k not in ['events','cart','last_activity_ts']})
+
+            commands.append(cmd)
+            if i % 1000:
+                self._call_exponea_bulk_api(commands)
+                commands = []
+
+            self._call_exponea_bulk_api(commands)
+
+    def _track_events(self):
+        commands = []
+        counter = 0
+        for i, user in enumerate(self.users):
+            for j, event in enumerate(user['events']):
+                counter += 1
+                cmd = {
+                    'name': 'crm/events',
+                    'data': {
+                        'customer_ids': {
+                            'registered': user['registered_id']
+                        },
+                     'project_id': 'e1d184f2-843b-11e6-b121-141877340e97'
+                    }
+                }
+                cmd['data'].update({k: v for k, v in event.items() if k not in ['registered_id']})
+
+                commands.append(cmd)
+                if counter % 1000:
+                    self._call_exponea_bulk_api(commands)
+                    commands = []
+
+            self._call_exponea_bulk_api(commands)
+
+    def _call_exponea_bulk_api(self, commands):
+        try:
+            r = requests.post("https://api.exponea.com/bulk", #data=json.dumps(commands),
+                              json={'commands': commands},
+                              headers={'content-type': "application/json"})
+        except Exception as e:
+            print(e)
+
+    def _save_events(self):
         files = {}
-        for user in users:
+
+        for user in self.users:
             for event in user['events']:
-                props = event['properties']
-                event = event.update(props)
-                event.pop('properties', None)
-
-                row = ' '.join(map(str, event.values()))
-
+                row = str()
                 if event['type'] not in files:
-                    files[event['type']]=[]
+                    files[event['type']] = []
+                    event_atoms = {k: v for k, v in event.items() if k != 'properties'}
+                    row += ';'.join(map(str, list(event_atoms.keys()) + list(event['properties'].keys()) ))+'\n'
 
-                files[event['type']].append(row+"\n")
+                event_atoms = {k: v for k, v in event.items() if k != 'properties'}
+                row += ';'.join(map(str, list(event_atoms.values()) + list(event['properties'].values()) ))+'\n'
+
+                files[event['type']].append(row)
 
         for event_type, rows in files.items():
             with open(event_type+".csv", "w+", newline="\n") as f:
-                f.write(' '.join(map(str, rows.values())))
-                print(rows)
-                f.writelines(rows)
+                f.write(''.join(map(str, rows)))
         return
 
-    def _save(self, data, file):
-        with open(file, mode="w+", encoding="utf-8") as f:
-            user = data[0]
+    def _save_customers(self, data, file):
+        with open(file, mode="w+", encoding="utf-8", newline="\n") as f:
+            user = copy(data[0])
             user.pop('cart', None)
             user.pop('events', None)
-            f.write(" ".join(map(str, data[0].keys())))
+            f.write(';'.join(map(str, user.keys())))
 
-            for item in data:
+            for item_instance in data:
+                item = copy(item_instance)
                 item.pop('cart', None)
                 item.pop('events', None)
-                out = ' '.join(map(str, item.values()))
+                out = '\n'+(';'.join(map(str, item.values())))
                 f.write(out)
         return
 
@@ -107,19 +170,22 @@ class Generator(object):
             f.write(json.dumps(self.users))
 
     def generate_users(self):
-        users = requests.get('https://randomuser.me/api/?results='+str(self.users_count), data={'dataType': 'json', })
+ #       users = requests.get('https://randomuser.me/api/?results='+str(self.users_count), data={'dataType': 'json', })
+        with open('users_100.json','r') as f:
+            users = json.load(f)
 
-        for i, user in enumerate(users.json()['results']):
-            print(user)
+#        for i, user in enumerate(users.json()['results']):
+        for i, user in enumerate(users['results']):
+            #print(user)
             created_ts = time.time() + random.randint(1,3600*24*14) - random.randint(1,3600*24*90)
             data = {
-                'registered': i,
+                'registered_id': i,
                 'cookie_id': str(uuid.uuid4()),
                 'first name': user['name']['first'],
                 'last name': user['name']['last'],
                 'email': user['email'],
                 'city': user['location']['city'],
-                'image': user['picture']['thumbnail'],
+                'image': user['picture']['medium'],
                 'gender': user['gender'],
                 'created_ts': created_ts,
                 'last_activity_ts': created_ts,
@@ -176,9 +242,9 @@ class Generator(object):
                 'utm_source': self._get_value(UTM_SOURCE, 0.2)
             }
             event = {
-                'timestamp': user['last_activity_ts'],
+                'timestamp': user['last_activity_ts'] - self.now,
                 'type': 'session_'+stage,
-                'customer_id': user['registered'],
+                'registered_id': user['registered_id'],
                 'properties': properties
             }
             if stage == 'end':
@@ -194,9 +260,9 @@ class Generator(object):
             'category': self._get_value(CATEGORY, 0.2),
         }
         event = {
-            'timestamp': user['last_activity_ts'],
+            'timestamp': user['last_activity_ts'] - self.now,
             'type': 'find',
-            'customer_id': user['registered'],
+            'registered_id': user['registered_id'],
             'properties': properties
         }
 
@@ -208,13 +274,13 @@ class Generator(object):
         user['last_activity_ts'] += random.randint(30, 0.5*3600)
         properties = self._get_value(PRODUCTS, 0.08)
         event = {
-            'timestamp': user['last_activity_ts'],
+            'timestamp': user['last_activity_ts'] - self.now,
             'type': 'view',
-            'customer_id': user['registered'],
+            'registered_id': user['registered_id'],
             'properties': properties
         }
         user['events'].append(event)
-        if(random.random() <= CR_VIEW_BASKET):
+        if(random.random() <= 0.02 * float(user['registered_id'] % 9)):
             self.generate_add_to_basket(user, properties)
 
         return
@@ -224,14 +290,14 @@ class Generator(object):
         user['cart'].append(item)
         properties = item
         event = {
-            'timestamp': user['last_activity_ts'],
-            'type': 'add to basket',
-            'customer_id': user['registered'],
+            'timestamp': user['last_activity_ts'] - self.now,
+            'type': 'add_to_cart',
+            'registered_id': user['registered_id'],
             'properties': properties
         }
         user['events'].append(event)
 
-        if(random.random() <= CR_BASKET_PURCHASE):
+        if(random.random() <= 0.01 * (user['registered_id'] % 10)):
             self.generate_purchase(user)
         return
 
@@ -250,9 +316,9 @@ class Generator(object):
             'payment method': self._get_value(PAYMENT, 0.5)
         }
         event = {
-            'timestamp': user['last_activity_ts'],
+            'timestamp': user['last_activity_ts'] - self.now,
             'type': 'purchase',
-            'customer_id': user['registered'],
+            'registered_id': user['registered_id'],
             'properties': properties
         }
         user['events'].append(event)
