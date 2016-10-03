@@ -16,7 +16,7 @@ OS = ['Windows', 'Mac OSX', 'iOS', 'Android', 'Linux', 'Other']
 DEVICE = ['Desktop', 'Tablet', 'Mobile']
 UTM_CAMPAIGN = ['FB_ads1', 'FB_ads2', 'FB_ads3', 'Newsletter_1', 'Newsletter_2','Newsletter_3', 'CrossPromo_1',
                 'Promo 2', 'invite', 'social share', 'affiliate 1', 'affiliate 2', 'affiliate 3']
-UTM_SOURCE = ['PPC', 'social', 'blog', 'affiliate']
+UTM_SOURCE = ['FB-PPC', 'Google-PPC', 'social', 'blog', 'affiliate']
 SEARCH = ['stabile', 'Stabile', 'Adidas', 'Adi', 'Ad', 'XL', 'L', 'XXL','XS', 'Puma', 'coffe maker', 'discout']
 CATEGORY = ['Shoes', 'Women appeal', 'Men appeal', 'Accessories', 'Other']
 PRODUCTS = [
@@ -119,6 +119,7 @@ class Generator(object):
 
             self._call_exponea_bulk_api(commands)
 
+    @staticmethod
     def _call_exponea_bulk_api(self, commands):
         try:
             r = requests.post("https://api.exponea.com/bulk", #data=json.dumps(commands),
@@ -155,7 +156,7 @@ class Generator(object):
             user.pop('events', None)
             f.write(';'.join(map(str, user.keys())))
 
-            for item_instance in data:
+            for item_instance in data[1:]:
                 item = copy(item_instance)
                 item.pop('cart', None)
                 item.pop('events', None)
@@ -168,16 +169,29 @@ class Generator(object):
         self.generate_events()
         with open('data.json', mode='w+', encoding='utf-8') as f:
             f.write(json.dumps(self.users))
+        return
+
+    def get_users_from_api(self):
+        query = 'https://randomuser.me/api'
+        payload = {'results': self.users_count}
+        r = requests.get(query, params=payload)
+        users = r.json()['results']
+        return users
+
+    def get_users_from_file(self):
+        with open('users_10k.json','r') as f:
+            users = json.load(f)
+        return users
 
     def generate_users(self):
- #       users = requests.get('https://randomuser.me/api/?results='+str(self.users_count), data={'dataType': 'json', })
-        with open('users_100.json','r') as f:
-            users = json.load(f)
 
-#        for i, user in enumerate(users.json()['results']):
-        for i, user in enumerate(users['results']):
-            #print(user)
+        users = self.get_users_from_api()
+#        users = self.get_users_from_file()
+
+        print(len(users))
+        for i, user in enumerate(users):
             created_ts = time.time() + random.randint(1,3600*24*14) - random.randint(1,3600*24*90)
+
             data = {
                 'registered_id': i,
                 'cookie_id': str(uuid.uuid4()),
@@ -219,6 +233,10 @@ class Generator(object):
         return
 
     def generate_browse(self, user, timestamp, max_cycles):
+        # 25% empty session
+        if float(user['registered_id'] % 3) == 0:
+            return timestamp
+
         for loop in range(0,random.randint(0,max_cycles)):
             [self.generate_find(user) for i in range(0, random.randint(0, 3))]
             [self.generate_view(user) for i in range(0, random.randint(0, 5))]
@@ -227,7 +245,7 @@ class Generator(object):
 
     def _get_value(self, items, chance):
         for item in items:
-            if random.random()<=chance:
+            if random.random() <= chance:
                 return item
         return items[-1]
 
@@ -275,17 +293,21 @@ class Generator(object):
         properties = self._get_value(PRODUCTS, 0.08)
         event = {
             'timestamp': user['last_activity_ts'] - self.now,
-            'type': 'view',
+            'type': 'visit_item',
             'registered_id': user['registered_id'],
             'properties': properties
         }
         user['events'].append(event)
-        if(random.random() <= 0.02 * float(user['registered_id'] % 9)):
-            self.generate_add_to_basket(user, properties)
+        if random.random() <= 0.003 * float(user['registered_id'] % 9) :
+
+            if user['events'][0]['properties'].get('utm_source',"") == 'FB-PPC' and random.random() > 0.10:
+                return
+            else:
+                self.generate_add_to_cart(user, properties)
 
         return
 
-    def generate_add_to_basket(self, user, item):
+    def generate_add_to_cart(self, user, item):
         user['last_activity_ts'] += random.randint(30, 0.5*3600)
         user['cart'].append(item)
         properties = item
@@ -297,7 +319,7 @@ class Generator(object):
         }
         user['events'].append(event)
 
-        if(random.random() <= 0.01 * (user['registered_id'] % 10)):
+        if random.random() <= 0.07 * (user['registered_id'] % 10):
             self.generate_purchase(user)
         return
 
@@ -305,8 +327,10 @@ class Generator(object):
         user['last_activity_ts'] += random.randint(30, 0.5*3600)
         total_price = 0
         items = 0
+
         for item in user['cart']:
             total_price += item['price']
+            self.generate_purchase_item(user, item)
             items += 1
 
         properties = {
@@ -315,16 +339,33 @@ class Generator(object):
             'delivery method': self._get_value(DELIVERY, 0.6),
             'payment method': self._get_value(PAYMENT, 0.5)
         }
+
         event = {
             'timestamp': user['last_activity_ts'] - self.now,
             'type': 'purchase',
             'registered_id': user['registered_id'],
             'properties': properties
         }
+
         user['events'].append(event)
         user['cart'] = []
         return
 
+    def generate_purchase_item(self, user, item):
+        properties = {
+            'price': item['price'],
+            'quantity': 1
+        }
+
+        event = {
+            'timestamp': user['last_activity_ts'] - self.now,
+            'type': 'purchase_item',
+            'registered_id': user['registered_id'],
+            'properties': properties
+        }
+        user['events'].append(event)
+
+        return
 
 
 
