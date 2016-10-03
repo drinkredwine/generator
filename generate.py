@@ -1,15 +1,14 @@
 import json
 import random
+import time
 import uuid
 from copy import copy
+from os import path
 
 import requests
-import time
 
-#r = requests.get('https://randomuser.me/api/', data = { 'dataType': 'json' })
-
-CR_VIEW_BASKET = 0.2
-CR_BASKET_PURCHASE = 0.33
+CR_VIEW_BASKET = 0.003
+CR_BASKET_PURCHASE = 0.07
 
 BROWSER = ['Chrome', 'Safari', 'Firefox', 'Opera', 'IE', 'Other']
 OS = ['Windows', 'Mac OSX', 'iOS', 'Android', 'Linux', 'Other']
@@ -52,20 +51,9 @@ class Generator(object):
         print(self.users)
         for user in self.users:
             print(user['events'])
-    #
-    # def _save(self, data, file):
-    #     with open(file, mode="w+", encoding="utf-8") as f:
-    #         f.write(" ".join(data[0].keys()))
-    #         for item1 in data:
-    #             item = item1
-    #             item.pop('cart', None)
-    #             item.pop('events', None)
-    #
-    #             out = ' '.join(map(str, item.values()))
-    #             f.write(out+"\n")
 
     def save(self):
-        self._save_customers(self.users, 'customers.csv')
+        self._save_customers(self.users, 'data/customers.csv')
         self._save_events()
         return
 
@@ -145,7 +133,7 @@ class Generator(object):
                 files[event['type']].append(row)
 
         for event_type, rows in files.items():
-            with open(event_type+".csv", "w+", newline="\n") as f:
+            with open(path.join("data", event_type + ".csv"), "w+", newline="\n") as f:
                 f.write(''.join(map(str, rows)))
         return
 
@@ -298,7 +286,7 @@ class Generator(object):
             'properties': properties
         }
         user['events'].append(event)
-        if random.random() <= 0.003 * float(user['registered_id'] % 9) :
+        if random.random() <= CR_VIEW_BASKET * float(user['registered_id'] % 9):
 
             if user['events'][0]['properties'].get('utm_source',"") == 'FB-PPC' and random.random() > 0.10:
                 return
@@ -319,7 +307,7 @@ class Generator(object):
         }
         user['events'].append(event)
 
-        if random.random() <= 0.07 * (user['registered_id'] % 10):
+        if random.random() <= CR_BASKET_PURCHASE * (user['registered_id'] % 10):
             self.generate_purchase(user)
         return
 
