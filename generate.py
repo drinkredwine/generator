@@ -1,4 +1,3 @@
-import json
 import random
 import time
 import uuid
@@ -6,6 +5,8 @@ from copy import copy
 from os import path
 
 import requests
+
+import json
 
 CR_VIEW_BASKET = 0.003
 CR_BASKET_PURCHASE = 0.07
@@ -214,7 +215,6 @@ class Generator(object):
         return
 
     def generate_session(self, user, timestamp):
-
         self.generate_visit(user, timestamp, "start")
         [self.generate_browse(user, timestamp, max_cycles=3) for i in range(0, random.randint(0, 5))]
         self.generate_visit(user, timestamp, "end")
@@ -352,7 +352,6 @@ class Generator(object):
             'properties': properties
         }
         user['events'].append(event)
-
         return
 
 
