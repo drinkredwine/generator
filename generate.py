@@ -192,6 +192,7 @@ class Generator(object):
                 'gender': user['gender'],
                 'created_ts': created_ts,
                 'last_activity_ts': created_ts,
+                'unsubscribed': True,
                 'events': [],
                 'cart': []
             }
@@ -305,8 +306,12 @@ class Generator(object):
             'registered_id': user['registered_id'],
             'properties': properties
         }
-        user['events'].append(event)
 
+        user_purchases = sum(map(lambda x: 1 if x['type'] == 'purchase' else 0, user['events']))
+        if random.random() < user_purchases / 4:
+            self.generate_purchase(user)
+
+        user['events'].append(event)
         if random.random() <= CR_BASKET_PURCHASE * (user['registered_id'] % 10):
             self.generate_purchase(user)
         return
