@@ -2,6 +2,7 @@ import random
 import time
 import uuid
 from copy import copy
+from math import ceil
 from os import path
 
 import requests
@@ -9,7 +10,7 @@ import requests
 import json
 
 CR_VIEW_BASKET = 0.003
-CR_BASKET_PURCHASE = 0.07
+CR_BASKET_PURCHASE = 0.06
 
 BROWSER = ['Chrome', 'Safari', 'Firefox', 'Opera', 'IE', 'Other']
 OS = ['Windows', 'Mac OSX', 'iOS', 'Android', 'Linux', 'Other']
@@ -122,6 +123,7 @@ class Generator(object):
 
         for user in self.users:
             for event in user['events']:
+                # event['timestamp'] += self.now
                 row = str()
                 if event['type'] not in files:
                     files[event['type']] = []
@@ -156,15 +158,30 @@ class Generator(object):
     def generate(self):
         self.generate_users()
         self.generate_events()
-        with open('data.json', mode='w+', encoding='utf-8') as f:
-            f.write(json.dumps(self.users))
+        # with open('data.json', mode='w+', encoding='utf-8') as f:
+        #     f.write(json.dumps(self.users))
         return
 
-    def get_users_from_api(self):
+    def get_api_request(self, n):
+
         query = 'https://randomuser.me/api'
-        payload = {'results': self.users_count}
+        payload = {'results': n}
         r = requests.get(query, params=payload)
-        users = r.json()['results']
+        return r.json()['results']
+
+    def get_users_from_api(self):
+        api_capacity = 5000
+
+        users = []
+        max_runs = ceil(self.users_count / api_capacity)
+        i = 0
+        while i < max_runs:
+            i += 1
+            if i < max_runs:
+                users.extend(self.get_api_request(api_capacity))
+            else:
+                users.extend(self.get_api_request(self.users_count % api_capacity))
+
         return users
 
     def get_users_from_file(self):
@@ -174,12 +191,12 @@ class Generator(object):
 
     def generate_users(self):
 
-        users = self.get_users_from_api()
-#        users = self.get_users_from_file()
+        users = self.get_users_from_api
+        #        users = self.get_users_from_file()
 
         print(len(users))
         for i, user in enumerate(users):
-            created_ts = time.time() + random.randint(1,3600*24*14) - random.randint(1,3600*24*90)
+            created_ts = time.time() + random.randint(1, 3600 * 24 * 14) - random.randint(1, 3600 * 24 * 120)
 
             data = {
                 'registered_id': i,
@@ -193,6 +210,7 @@ class Generator(object):
                 'created_ts': created_ts,
                 'last_activity_ts': created_ts,
                 'unsubscribed': True,
+                'age': random.randint(15, 85),
                 'events': [],
                 'cart': []
             }
@@ -287,9 +305,10 @@ class Generator(object):
             'properties': properties
         }
         user['events'].append(event)
-        if random.random() <= CR_VIEW_BASKET * float(user['registered_id'] % 9):
 
-            if user['events'][0]['properties'].get('utm_source',"") == 'FB-PPC' and random.random() > 0.10:
+        if random.random() <= CR_VIEW_BASKET * float(user['registered_id'] % 9):
+            if 'FB-PPC' in map(lambda x: x['properties'].get('utm_source', ""),
+                               user['events']) and random.random() > 0.2:
                 return
             else:
                 self.generate_add_to_cart(user, properties)
@@ -308,7 +327,7 @@ class Generator(object):
         }
 
         user_purchases = sum(map(lambda x: 1 if x['type'] == 'purchase' else 0, user['events']))
-        if random.random() < user_purchases / 4:
+        if random.random() < user_purchases / 4.0:
             self.generate_purchase(user)
 
         user['events'].append(event)
