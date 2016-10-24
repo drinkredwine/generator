@@ -2,7 +2,6 @@ import random
 import time
 import uuid
 from copy import copy
-from math import ceil
 from os import path
 
 import requests
@@ -11,6 +10,8 @@ import json
 
 CR_VIEW_BASKET = 0.003
 CR_BASKET_PURCHASE = 0.06
+DAYS_BETWEEN_SESSIONS = 45
+DAYS_OLDEST_START = 365
 
 BROWSER = ['Chrome', 'Safari', 'Firefox', 'Opera', 'IE', 'Other']
 OS = ['Windows', 'Mac OSX', 'iOS', 'Android', 'Linux', 'Other']
@@ -46,6 +47,7 @@ class Generator(object):
         self.users_count = user_count
         self.users = []
         self.now = time.time()
+        self.purchase_id = 1
 
         return
 
@@ -167,20 +169,21 @@ class Generator(object):
         query = 'https://randomuser.me/api'
         payload = {'results': n}
         r = requests.get(query, params=payload)
+
+        if r.json().get('error'):
+            time.sleep(61)
+            r = requests.get(query, params=payload)
         return r.json()['results']
 
     def get_users_from_api(self):
-        api_capacity = 5000
+        api_capacity = 2000
 
         users = []
-        max_runs = ceil(self.users_count / api_capacity)
         i = 0
-        while i < max_runs:
+        while i < int(self.users_count / api_capacity):
+            users.extend(self.get_api_request(api_capacity))
             i += 1
-            if i < max_runs:
-                users.extend(self.get_api_request(api_capacity))
-            else:
-                users.extend(self.get_api_request(self.users_count % api_capacity))
+        users.extend(self.get_api_request(self.users_count % api_capacity))
 
         return users
 
@@ -191,12 +194,13 @@ class Generator(object):
 
     def generate_users(self):
 
-        users = self.get_users_from_api
+        users = self.get_users_from_api()
         #        users = self.get_users_from_file()
 
         print(len(users))
         for i, user in enumerate(users):
-            created_ts = time.time() + random.randint(1, 3600 * 24 * 14) - random.randint(1, 3600 * 24 * 120)
+            created_ts = time.time() + random.randint(1, 3600 * 24 * 14) - random.randint(1,
+                                                                                          3600 * 24 * DAYS_OLDEST_START)
 
             data = {
                 'registered_id': i,
@@ -227,11 +231,12 @@ class Generator(object):
         timestamp = user['created_ts']
         for i in range(0, random.randint(0,20)):
             self.generate_session(user, timestamp)
-            user['last_activity_ts'] += random.randint(3600*4*1, 3600*30*24)
+            user['last_activity_ts'] += random.randint(3600 * 4 * 1, 3600 * DAYS_BETWEEN_SESSIONS * 24)
             if user['last_activity_ts'] >= time.time()+3600*24*30:
                 break
 
         return
+
 
     def generate_session(self, user, timestamp):
         self.generate_visit(user, timestamp, "start")
@@ -283,10 +288,13 @@ class Generator(object):
         properties = {
             'search': self._get_value(SEARCH, 0.1),
             'category': self._get_value(CATEGORY, 0.2),
+            'query': 'default query',
+            'results_count': 14,
+            'exact_match': False
         }
         event = {
             'timestamp': user['last_activity_ts'] - self.now,
-            'type': 'find',
+            'type': 'search',
             'registered_id': user['registered_id'],
             'properties': properties
         }
@@ -300,7 +308,7 @@ class Generator(object):
         properties = self._get_value(PRODUCTS, 0.08)
         event = {
             'timestamp': user['last_activity_ts'] - self.now,
-            'type': 'visit_item',
+            'type': 'item_visit',
             'registered_id': user['registered_id'],
             'properties': properties
         }
@@ -319,9 +327,10 @@ class Generator(object):
         user['last_activity_ts'] += random.randint(30, 0.5*3600)
         user['cart'].append(item)
         properties = item
+        properties['action'] = 'add'
         event = {
             'timestamp': user['last_activity_ts'] - self.now,
-            'type': 'add_to_cart',
+            'type': 'cart_update',
             'registered_id': user['registered_id'],
             'properties': properties
         }
@@ -340,16 +349,19 @@ class Generator(object):
         total_price = 0
         items = 0
 
+        purchase_id = self.get_purchase_id()
         for item in user['cart']:
             total_price += item['price']
-            self.generate_purchase_item(user, item)
+            self.generate_purchase_item(user, item, purchase_id)
             items += 1
 
         properties = {
-            'total price':total_price,
+            'status': 'success',
+            'total_price': total_price,
             'items': items,
-            'delivery method': self._get_value(DELIVERY, 0.6),
-            'payment method': self._get_value(PAYMENT, 0.5)
+            'delivery_method': self._get_value(DELIVERY, 0.6),
+            'payment_method': self._get_value(PAYMENT, 0.5),
+            'purchase_id': purchase_id
         }
 
         event = {
@@ -363,10 +375,22 @@ class Generator(object):
         user['cart'] = []
         return
 
-    def generate_purchase_item(self, user, item):
+    def get_purchase_id(self):
+        self.purchase_id += 1
+        return self.purchase_id
+
+    def generate_purchase_item(self, user, item, purchase_id):
         properties = {
-            'price': item['price'],
-            'quantity': 1
+            'status': 'success',
+            'purchase_id': purchase_id,
+            'item_id': 999,
+            'item_price': item['price'],
+            'item_sku': 'noSKU',
+            'item_name': item['name'],
+            'category_id': item['category'],
+            'category_name': item['category'],
+            'quantity': 1,
+            'total_price': 1 * item['price']
         }
 
         event = {
