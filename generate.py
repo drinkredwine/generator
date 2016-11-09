@@ -120,12 +120,13 @@ class Generator(object):
         except Exception as e:
             print(e)
 
-    def _save_events(self):
+    def tar_save_events(self):
         files = {}
 
         for user in self.users:
             for event in user['events']:
-                # event['timestamp'] += self.now
+                # flag
+                event['timestamp'] += self.now
                 row = str()
                 if event['type'] not in files:
                     files[event['type']] = []
