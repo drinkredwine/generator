@@ -61,12 +61,12 @@ class Generator(object):
         self._save_events()
         return
 
-    def track(self):
-        self._track_users()
-        self._track_events()
+    def track(self, project_id):
+        self._track_usersproject_id()
+        self._track_events(project_id)
         return
 
-    def _track_users(self):
+    def _track_users(self, project_id):
         commands = []
         for i, user in enumerate(self.users):
             cmd = {
@@ -75,7 +75,7 @@ class Generator(object):
                     'customer_ids': {
                         'registered': user['registered_id']
                     },
-                    'project_id': 'e1d184f2-843b-11e6-b121-141877340e97'
+                    'project_id': project_id
                 }
             }
             cmd['data'].update({k: v for k, v in user.items() if k not in ['events','cart','last_activity_ts']})
@@ -87,7 +87,7 @@ class Generator(object):
 
             self._call_exponea_bulk_api(commands)
 
-    def _track_events(self):
+    def _track_events(self, project_id):
         commands = []
         counter = 0
         for i, user in enumerate(self.users):
@@ -99,7 +99,7 @@ class Generator(object):
                         'customer_ids': {
                             'registered': user['registered_id']
                         },
-                     'project_id': 'e1d184f2-843b-11e6-b121-141877340e97'
+                        'project_id': project_id
                     }
                 }
                 cmd['data'].update({k: v for k, v in event.items() if k not in ['registered_id']})
