@@ -56,14 +56,14 @@ class Generator(object):
         for user in self.users:
             print(user['events'])
 
-    def save(self):
+    def save(self, absolute_timestamps):
         self._save_customers(self.users, 'data/customers.csv')
-        self._save_events()
+        self._save_events(absolute_timestamps)
         return
 
-    def track(self, project_id):
-        self._track_usersproject_id()
-        self._track_events(project_id)
+    def track(self, project_id, absolute_timestamps):
+        self._track_users(project_id)
+        self._track_events(project_id, absolute_timestamps)
         return
 
     def _track_users(self, project_id):
@@ -87,11 +87,13 @@ class Generator(object):
 
             self._call_exponea_bulk_api(commands)
 
-    def _track_events(self, project_id):
+    def _track_events(self, project_id, absolute_timestamps):
         commands = []
         counter = 0
         for i, user in enumerate(self.users):
             for j, event in enumerate(user['events']):
+                if absolute_timestamps:
+                    event['timestamp'] += self.now
                 counter += 1
                 cmd = {
                     'name': 'crm/events',
@@ -120,13 +122,14 @@ class Generator(object):
         except Exception as e:
             print(e)
 
-    def tar_save_events(self):
+    def _save_events(self, absolute_timestamps=True):
         files = {}
 
         for user in self.users:
             for event in user['events']:
                 # flag
-                event['timestamp'] += self.now
+                if absolute_timestamps:
+                    event['timestamp'] += self.now
                 row = str()
                 if event['type'] not in files:
                     files[event['type']] = []
