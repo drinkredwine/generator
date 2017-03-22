@@ -1,3 +1,4 @@
+import concurrent.futures
 import random
 import time
 import uuid
@@ -72,7 +73,7 @@ class Generator(object):
             cmd = {
                 'name': 'crm/customers',
                 'data': {
-                    'customer_ids': {
+                    'ids': {
                         'registered': user['registered_id']
                     },
                     'project_id': project_id
@@ -81,39 +82,52 @@ class Generator(object):
             cmd['data'].update({k: v for k, v in user.items() if k not in ['events','cart','last_activity_ts']})
 
             commands.append(cmd)
-            if i % 1000:
+            if i % 50:
                 self._call_exponea_bulk_api(commands)
                 commands = []
 
             self._call_exponea_bulk_api(commands)
 
-    def _track_events(self, project_id, absolute_timestamps):
-        commands = []
+    def _track_send_user(self, user, project_id, absolute_timestamps):
         counter = 0
-        for i, user in enumerate(self.users):
-            for j, event in enumerate(user['events']):
-                if absolute_timestamps:
-                    event['timestamp'] += self.now
-                counter += 1
-                cmd = {
-                    'name': 'crm/events',
-                    'data': {
-                        'customer_ids': {
-                            'registered': user['registered_id']
-                        },
-                        'project_id': project_id
-                    }
+        commands = []
+        for event in user['events']:
+            if absolute_timestamps:
+                event['timestamp'] += self.now
+            counter += 1
+            cmd = {
+                'name': 'crm/events',
+                'data': {
+                    'customer_ids': {
+                        'registered': user['registered_id']
+                    },
+                    'project_id': project_id
                 }
-                cmd['data'].update({k: v for k, v in event.items() if k not in ['registered_id']})
+            }
+            cmd['data'].update({k: v for k, v in event.items() if k not in ['registered_id']})
 
-                commands.append(cmd)
-                if counter % 1000:
-                    self._call_exponea_bulk_api(commands)
-                    commands = []
+            commands.append(cmd)
+            if counter % 50 == 0:
+                self._call_exponea_bulk_api(commands)
+                commands = []
+        self._call_exponea_bulk_api(commands)
 
-            self._call_exponea_bulk_api(commands)
+    def _track_events(self, project_id, absolute_timestamps):
+        print('Tracking events')
+        start = time.time()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
+            future_to_url = {executor.submit(self._track_send_user, user, project_id, absolute_timestamps):
+                                 user for user in self.users}
+            for future in concurrent.futures.as_completed(future_to_url):
+                url = future_to_url[future]
+                try:
+                    data = future.result()
+                except Exception as exc:
+                    print('%r generated an exception: %s' % (url, exc))
+        end = time.time()
+        print('Tracked in {} seconds'.format(end - start))
 
-    @staticmethod
+
     def _call_exponea_bulk_api(self, commands):
         try:
             r = requests.post("https://api.exponea.com/bulk", #data=json.dumps(commands),
@@ -121,6 +135,7 @@ class Generator(object):
                               headers={'content-type': "application/json"})
         except Exception as e:
             print(e)
+
 
     def _save_events(self, absolute_timestamps=True):
         files = {}
@@ -183,6 +198,7 @@ class Generator(object):
         api_capacity = 2000
 
         users = []
+
         i = 0
         while i < int(self.users_count / api_capacity):
             users.extend(self.get_api_request(api_capacity))
@@ -196,9 +212,15 @@ class Generator(object):
             users = json.load(f)
         return users
 
-    def generate_users(self):
+    def get_dummy_users(self):
+        return [{} for i in range(self.users_count)]
 
-        users = self.get_users_from_api()
+    def generate_users(self, source='dummy'):
+        if source == 'dummy':
+            users = self.get_dummy_users()
+        else:
+            users = self.get_users_from_api()
+
         #        users = self.get_users_from_file()
 
         print(len(users))
@@ -209,12 +231,6 @@ class Generator(object):
             data = {
                 'registered_id': i,
                 'cookie_id': str(uuid.uuid4()),
-                'first name': user['name']['first'],
-                'last name': user['name']['last'],
-                'email': user['email'],
-                'city': user['location']['city'],
-                'image': user['picture']['medium'],
-                'gender': user['gender'],
                 'created_ts': created_ts,
                 'last_activity_ts': created_ts,
                 'unsubscribed': True,
@@ -223,13 +239,33 @@ class Generator(object):
                 'cart': []
             }
 
+            if source != 'dummy':
+                data.update({
+                    'first name': user['name']['first'],
+                    'last name': user['name']['last'],
+                    'email': user['email'],
+                    'city': user['location']['city'],
+                    'image': user['picture']['medium'],
+                    'gender': user['gender'],
+                })
+
             self.users.append(data)
 
         return
 
     def generate_events(self):
-        for user in self.users:
-            self.generate_user_journey(user)
+        start = time.time()
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            future_to_url = {executor.submit(self.generate_user_journey, user):
+                                 user for user in self.users}
+            for future in concurrent.futures.as_completed(future_to_url):
+                url = future_to_url[future]
+                try:
+                    data = future.result()
+                except Exception as exc:
+                    print('%r generated an exception: %s' % (url, exc))
+        end = time.time()
+        print('Generated in {} seconds'.format(end - start))
 
     def generate_user_journey(self, user):
         timestamp = user['created_ts']
