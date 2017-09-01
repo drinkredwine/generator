@@ -1,4 +1,5 @@
 import concurrent.futures
+import json
 import random
 import time
 import uuid
@@ -6,8 +7,6 @@ from copy import copy
 from os import path
 
 import requests
-
-import json
 
 CR_VIEW_BASKET = 0.003
 CR_BASKET_PURCHASE = 0.06
@@ -64,7 +63,7 @@ class Generator(object):
 
     def track(self, project_id, absolute_timestamps):
         self._track_users(project_id)
-        self._track_events(project_id, absolute_timestamps)
+        # self._track_events(project_id, absolute_timestamps)
         return
 
     def _track_users(self, project_id):
@@ -76,19 +75,20 @@ class Generator(object):
                     'ids': {
                         'registered': user['registered_id']
                     },
+                    'properties': {k: v for k, v in user.items() if k not in ['events', 'cart', 'last_activity_ts']},
                     'project_id': project_id
+
                 }
             }
-            cmd['data'].update({k: v for k, v in user.items() if k not in ['events','cart','last_activity_ts']})
 
             commands.append(cmd)
-            if i % 50:
+            if i % 50 == 0:
                 self._call_exponea_bulk_api(commands)
                 commands = []
 
-            self._call_exponea_bulk_api(commands)
+        self._call_exponea_bulk_api(commands)
 
-    def _track_send_user(self, user, project_id, absolute_timestamps):
+    def _track_send_user_events(self, user, project_id, absolute_timestamps):
         counter = 0
         commands = []
         for event in user['events']:
@@ -116,7 +116,7 @@ class Generator(object):
         print('Tracking events')
         start = time.time()
         with concurrent.futures.ThreadPoolExecutor(max_workers=16) as executor:
-            future_to_url = {executor.submit(self._track_send_user, user, project_id, absolute_timestamps):
+            future_to_url = {executor.submit(self._track_send_user_events, user, project_id, absolute_timestamps):
                                  user for user in self.users}
             for future in concurrent.futures.as_completed(future_to_url):
                 url = future_to_url[future]
@@ -129,10 +129,12 @@ class Generator(object):
 
 
     def _call_exponea_bulk_api(self, commands):
+        #print(commands)
         try:
             r = requests.post("https://api.exponea.com/bulk", #data=json.dumps(commands),
                               json={'commands': commands},
                               headers={'content-type': "application/json"})
+            print(r.json())
         except Exception as e:
             print(e)
 
@@ -177,7 +179,7 @@ class Generator(object):
         return
 
     def generate(self):
-        self.generate_users()
+        self.generate_users(source='api')
         self.generate_events()
         # with open('data.json', mode='w+', encoding='utf-8') as f:
         #     f.write(json.dumps(self.users))
