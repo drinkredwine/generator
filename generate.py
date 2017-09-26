@@ -62,8 +62,8 @@ class Generator(object):
         return
 
     def track(self, project_id, absolute_timestamps):
-        self._track_users(project_id)
-        # self._track_events(project_id, absolute_timestamps)
+        # self._track_users(project_id)
+        self._track_events(project_id, absolute_timestamps)
         return
 
     def _track_users(self, project_id):

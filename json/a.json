@@ -1,0 +1,37 @@
+{
+  "gender": "female",
+  "name": {
+    "title": "ms",
+    "first": "kayley",
+    "last": "tool"
+  },
+  "location": {
+    "street": "9558 ambachtstraat",
+    "city": "rheden",
+    "state": "groningen",
+    "postcode": 22091
+  },
+  "email": "kayley.tool@example.com",
+  "login": {
+    "username": "organicleopard631",
+    "password": "spock",
+    "salt": "qGZudcW3",
+    "md5": "6291d60e9b2da8f9864dc001d56f27a1",
+    "sha1": "d0d42b9dbb5caf8bf62f6f0f9b40118bf290c079",
+    "sha256": "19838e73a78367e0b086e6dec770d222d936f1d5724848bb894955cce2ecc94d"
+  },
+  "dob": "1946-10-25 14:45:13",
+  "registered": "2008-01-06 01:31:46",
+  "phone": "(746)-231-8776",
+  "cell": "(221)-758-1139",
+  "id": {
+    "name": "BSN",
+    "value": "79256701"
+  },
+  "picture": {
+    "large": "https://randomuser.me/api/portraits/women/16.jpg",
+    "medium": "https://randomuser.me/api/portraits/med/women/16.jpg",
+    "thumbnail": "https://randomuser.me/api/portraits/thumb/women/16.jpg"
+  },
+  "nat": "NL"
+}
